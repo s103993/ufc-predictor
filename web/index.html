@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WalkoMat - predyktor walk UFC</title>
+<style>
+  :root {
+    --bg0:#0a0d12; --bg1:#0e131a; --card:#12161d; --input:#0b0f15;
+    --line:rgba(148,163,184,.14); --line-strong:rgba(148,163,184,.30);
+    --ink:#e6ebf2; --muted:#8b94a3;
+    --a1:#10b5a3; --a2:#0b8fb8;                 /* akcent: teal -> blue gradient */
+    --green:#14b8a6; --red:#e0685c; --track:rgba(148,163,184,.14);
+    --warn-bg:rgba(245,200,90,.08); --warn-line:rgba(245,200,90,.25); --warn-ink:#e8cf8e;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; color:var(--ink);
+    font:15px/1.55 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background:
+      radial-gradient(1000px 460px at 78% -10%, rgba(16,181,163,.13), transparent 60%),
+      radial-gradient(820px 420px at 8% -8%, rgba(59,130,246,.10), transparent 55%),
+      linear-gradient(180deg, var(--bg1), var(--bg0) 60%);
+    min-height:100vh; background-attachment:fixed;
+  }
+  .wrap { max-width:920px; margin:0 auto; padding:28px 18px 44px; }
+
+  /* --- nagłówek --- */
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+           border-bottom:1px solid var(--line-strong); padding-bottom:12px; flex-wrap:wrap; }
+  .mark { font-family:Georgia, "Times New Roman", serif; font-size:1.7rem; letter-spacing:.01em; }
+  .mark .glyph {
+    background:linear-gradient(135deg, var(--a1), var(--a2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .meta { font-family:ui-monospace, "Cascadia Mono", Consolas, monospace; font-size:.72rem;
+          color:var(--muted); text-align:right; }
+  .tagline { margin:10px 0 22px; font-size:.72rem; letter-spacing:.14em; text-transform:uppercase;
+             color:var(--muted); }
+
+  /* --- karty --- */
+  .card { background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012));
+          border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  label { display:block; font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+          color:var(--muted); margin-bottom:5px; }
+  input { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+          background:var(--input); color:var(--ink); font-size:1rem; transition:border-color .2s, box-shadow .2s; }
+  input:focus { outline:none; border-color:var(--a1); box-shadow:0 0 0 3px rgba(16,181,163,.15); }
+
+  /* --- przyciski: gradient, hover-lift, ripple --- */
+  button { position:relative; overflow:hidden; padding:10px 18px; border-radius:8px; border:0;
+           background:linear-gradient(135deg, var(--a1), var(--a2)); color:#fff;
+           font-weight:600; cursor:pointer; font-size:.92rem;
+           transition:transform .16s var(--ease), box-shadow .2s, filter .2s; }
+  button:hover { filter:brightness(1.10); transform:translateY(-1px);
+                 box-shadow:0 8px 22px rgba(13,148,136,.28); }
+  button:active { transform:translateY(0) scale(.965); filter:brightness(.95); }
+  button.ghost { background:rgba(255,255,255,.03); border:1px solid var(--line); color:var(--ink);
+                 font-weight:500; }
+  button.ghost:hover { border-color:var(--line-strong); background:rgba(255,255,255,.06);
+                       box-shadow:0 6px 16px rgba(0,0,0,.25); }
+  .ripple { position:absolute; width:14px; height:14px; border-radius:50%;
+            background:rgba(255,255,255,.35); transform:scale(0); pointer-events:none;
+            animation:ripple .55s ease-out forwards; }
+  button.ghost .ripple { background:rgba(148,163,184,.30); }
+  @keyframes ripple { to { transform:scale(16); opacity:0; } }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+  .fighter { font-size:.84rem; color:var(--muted); margin-top:10px; }
+  .error { color:var(--red); margin-top:10px; white-space:pre-line; font-size:.9rem; }
+
+  /* --- wynik --- */
+  #result { display:none; }
+  #result.open { display:block; animation:cardIn .45s var(--ease) both; }
+  @keyframes cardIn { from { opacity:0; transform:translateY(18px) scale(.98); }
+                      to { opacity:1; transform:none; } }
+  #result .prob, #result .decision, #result .ctx, #result h3, #result .explain, #result .warnbox { opacity:0; }
+  #result.open .prob    { animation:rise .4s var(--ease) both; }
+  #result.open .warnbox { animation:rise .4s var(--ease) both; animation-delay:60ms; }
+  #result.open .decision{ animation:rise .4s var(--ease) both; animation-delay:90ms; }
+  #result.open .ctx     { animation:rise .4s var(--ease) both; animation-delay:120ms; }
+  #result.open h3       { animation:rise .4s var(--ease) both; animation-delay:150ms; }
+  #result.open .explain { animation:rise .4s var(--ease) both; animation-delay:400ms; }
+  @keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+  .prob { display:flex; height:42px; border-radius:8px; overflow:hidden; margin:4px 0 10px;
+          font-weight:700; white-space:nowrap; }
+  .prob .a { background:linear-gradient(90deg, var(--a1), #0d9488); color:#fff;
+             display:flex; align-items:center; padding-left:12px; min-width:0; overflow:hidden;
+             transition:width .8s var(--ease); }
+  .prob .b { background:linear-gradient(90deg, #b34a3e, var(--red)); color:#fff;
+             display:flex; align-items:center; justify-content:flex-end; padding-right:12px;
+             flex:1; min-width:0; overflow:hidden; transition:width .8s var(--ease); }
+  .decision { font-size:1.12rem; font-weight:650; margin:8px 0 2px; }
+  .muted { color:var(--muted); }
+  h3 { font-size:.78rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+       font-weight:600; margin:18px 0 8px; }
+  .item { display:grid; grid-template-columns:230px 1fr 150px; gap:12px; align-items:center;
+          padding:4px 0; font-size:.9rem; opacity:0; }
+  #result.open .item { animation:rise .38s var(--ease) both;
+                       animation-delay:calc(var(--i) * 50ms + 170ms); }
+  .bar { height:10px; border-radius:5px; background:var(--track); position:relative; overflow:hidden; }
+  .bar i { position:absolute; top:0; bottom:0; border-radius:5px; transform-origin:left;
+           transform:scaleX(0); }
+  #result.open .bar i { animation:growX .55s var(--ease) forwards;
+                        animation-delay:calc(var(--i) * 50ms + 200ms); }
+  @keyframes growX { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+  .warnbox { background:var(--warn-bg); border:1px solid var(--warn-line); color:var(--warn-ink);
+             border-radius:8px; padding:10px 14px; font-size:.87rem; margin-bottom:14px; }
+  .warnbox ul { margin:6px 0 0 18px; padding:0; }
+  footer { border-top:1px solid var(--line); margin-top:26px; padding-top:12px;
+           color:var(--muted); font-size:.74rem; line-height:1.7; }
+  code { font-family:ui-monospace, Consolas, monospace; font-size:.85em; background:var(--track);
+         padding:1px 4px; border-radius:4px; }
+  @media (max-width:640px){ .grid2{grid-template-columns:1fr;}
+    .item{grid-template-columns:140px 1fr 110px;} .meta{display:none;} }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation:none !important; transition:none !important; }
+    #result .prob, #result .decision, #result .ctx, #result h3, #result .explain,
+    #result .warnbox, #result .item { opacity:1 !important; }
+    .bar i { transform:scaleX(1) !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark"><span class="glyph">◈</span> WalkoMat</div>
+    <div class="meta">nn.Linear(32, 1) · UFC 2013–2026 · v1.1</div>
+  </header>
+  <p class="tagline">Prawdopodobieństwo zwycięstwa zawodnika A · predykcja liczona w przeglądarce</p>
+
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <label for="in-a">Zawodnik A</label>
+        <input id="in-a" list="dl" placeholder="np. Jon Jones" autocomplete="off">
+      </div>
+      <div>
+        <label for="in-b">Zawodnik B</label>
+        <input id="in-b" list="dl" placeholder="np. Tom Aspinall" autocomplete="off">
+      </div>
+    </div>
+    <datalist id="dl"></datalist>
+    <div class="row">
+      <button id="btn-go">Predykcja</button>
+      <button id="btn-rand" class="ghost">⇶ Losowa walka</button>
+    </div>
+    <div class="error" id="err"></div>
+    <div class="fighter" id="info-a"></div>
+    <div class="fighter" id="info-b"></div>
+  </div>
+
+  <div class="card" id="result">
+    <div class="warnbox" id="warn" style="display:none"></div>
+    <div class="prob"><div class="a" id="pa">A</div><div class="b" id="pb">B</div></div>
+    <div class="decision" id="decision"></div>
+    <div class="muted" id="ctx" style="font-size:.84rem"></div>
+    <h3>Top cechy decyzyjne · wkład = waga × cecha</h3>
+    <div id="contribs"></div>
+    <p class="explain muted" style="font-size:.78rem;margin:8px 0 10px">
+      Zielony - sprzyja zawodnikowi A · czerwony - zawodnikowi B</p>
+    <button id="btn-all" class="ghost">pokaż wszystkie 32 cechy</button>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+"use strict";
+const D = UFC_MODEL_DATA;
+const FEATS = D.feature_columns;
+const LABEL = D.feature_labels_pl;
+const MED = D.medians;
+const MEAN = D.scaler.mean, SCALE = D.scaler.scale;
+const W = D.weights;   // wagi 32 cech; bias osobno (D.bias)
+const BIAS = D.bias;
+const FIGHTERS = D.fighters;
+const TM = D.meta.test_metrics || {};
+
+// --- pomocnicze ---
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const isNum = v => v !== null && v !== undefined && Number.isFinite(v);
+const sub = (a, b) => (isNum(a) && isNum(b)) ? a - b : NaN;   // różnica; brak danych -> NaN
+const miss = v => isNum(v) ? 0 : 1;
+
+// --- stopka: dwie krótkie linie ---
+let tmHtml = "";
+if (isNum(TM.accuracy)) tmHtml = " · test: acc " + (TM.accuracy * 100).toFixed(1).replace(".", ",") +
+                                 "% · AUC " + TM.roc_auc.toFixed(3).replace(".", ",");
+$("footer").innerHTML =
+  "Dane: nlbair/ufc-data (CC BY 4.0) · " + D.meta.date_min.slice(0, 4) + "–" +
+  D.meta.date_max.slice(0, 4) + " · snapshoty na " + D.meta.as_of + tmHtml +
+  "<br>WalkoMat v1.1 - projekt edukacyjny, nie stanowi porady finansowej ani zachęty do hazardu.";
+
+// --- lista zawodników (datalist) ---
+const NAMES = Object.keys(FIGHTERS).sort((a, b) => a.localeCompare(b, "pl"));
+$("dl").innerHTML = NAMES.map(n => "<option value=\"" + esc(n) + "\">").join("");
+
+function resolveName(q) {
+  q = (q || "").trim();
+  if (!q) return { error: "Podaj nazwisko zawodnika." };
+  const byLower = {};
+  for (const n of NAMES) byLower[n.toLowerCase()] = n;
+  if (byLower[q.toLowerCase()]) return { name: byLower[q.toLowerCase()] };
+  const q2 = q.toLowerCase();
+  const m = NAMES.filter(n => n.toLowerCase().includes(q2));
+  if (m.length === 1) return { name: m[0] };
+  if (m.length === 0) return { error: "Nie znaleziono \u201E" + q + "\u201D w danych (UFC 2013–2026)." };
+  return { error: "Niejednoznaczne - dopasowania: " + m.slice(0, 8).join(", ") + (m.length > 8 ? "…" : "") };
+}
+
+// --- budowa 32 cech: wierny odpowiednik make_feature_row() z main.py ---
+const CAREER_KEYS = { exp_diff:"n", wins_diff:"wins", losses_diff:"losses", draws_diff:"draws",
+  win_pct_diff:"win_pct", ko_pct_diff:"ko_pct", sub_pct_diff:"sub_pct", dec_pct_diff:"dec_pct",
+  finish_rate_diff:"finish_rate", avg_fight_time_diff:"avg_time", med_fight_time_diff:"med_time",
+  fights_12m_diff:"fights_12m", fights_24m_diff:"fights_24m", form3_diff:"form3", form5_diff:"form5",
+  days_rest_diff:"days_rest", streak_diff:"streak", title_exp_diff:"title_n" };
+
+function rankCapped(rank, ranked) {  // jak _rank_capped(): 0=mistrz, 20=nierankingowy
+  return (ranked >= 0.5 && isNum(rank)) ? Math.min(rank, 20) : 20;
+}
+
+function buildFeatures(A, B) {
+  const sa = A.snap, sb = B.snap, la = A.attrs, lb = B.attrs;
+  const f = {};
+  for (const feat in CAREER_KEYS) f[feat] = sa[CAREER_KEYS[feat]] - sb[CAREER_KEYS[feat]];
+  f.debut_diff = sa.debut - sb.debut;
+  f.both_debut = sa.debut * sb.debut;
+  f.age_diff = sub(la.age, lb.age);
+  f.height_diff = sub(la.height, lb.height);
+  f.reach_diff = sub(la.reach, lb.reach);
+  f.stance_diff = sub(la.stance, lb.stance);
+  f.ranked_diff = la.ranked - lb.ranked;
+  f.rank_diff = rankCapped(la.rank, la.ranked) - rankCapped(lb.rank, lb.ranked);
+  f.weight_class_lbs = isNum(la.weight_class_lbs) ? la.weight_class_lbs : lb.weight_class_lbs;
+  f.is_womens_division = isNum(la.is_womens) ? la.is_womens : lb.is_womens;
+  f.is_title_bout = 0;  // strona prognozuje zwykłą walkę (jak demo w CLI)
+  f.reach_missing_diff = miss(la.reach) - miss(lb.reach);
+  f.height_missing_diff = miss(la.height) - miss(lb.height);
+  f.age_missing_diff = miss(la.age) - miss(lb.age);
+  return f;
+}
+
+// --- predykcja: imputacja medianą -> standaryzacja -> winsoryzacja ±3σ -> sigmoid ---
+const Z_CAP = 3;  // jak Z_CAP_SIGMA w main.py: jedna cecha nie zdominuje logitu
+const clampZ = z => Math.max(-Z_CAP, Math.min(Z_CAP, z));
+
+function predict(A, B) {
+  const raw = buildFeatures(A, B);
+  const contribs = [];
+  let logit = BIAS;
+  FEATS.forEach((feat, i) => {
+    let v = raw[feat];
+    if (!isNum(v)) v = MED[feat];
+    const z = clampZ((v - MEAN[i]) / SCALE[i]);
+    const c = W[feat] * z;
+    logit += c;
+    contribs.push({ feat, c });
+  });
+  const pA = 1 / (1 + Math.exp(-logit));
+  contribs.sort((a, b) => Math.abs(b.c) - Math.abs(a.c));
+  return { pA, contribs, raw };
+}
+
+// --- UI ---
+function showInfo(elId, name) {
+  const F = FIGHTERS[name], s = F.snap;
+  const streak = Math.abs(s.streak) >= 1
+    ? (s.streak > 0 ? "seria " + s.streak + " zwycięstw" : "seria " + (-s.streak) + " porażek")
+    : "bez aktywnej serii";
+  $(elId).textContent = name + " - bilans: " + s.wins + "-" + s.losses + "-" + s.draws +
+    " (" + s.n + " walk), forma 5: " + (s.form5 * 100).toFixed(0) + "%, " + streak +
+    ", ostatnia: " + F.last_fight + " (" + F.division + ")";
+}
+
+function renderContribs(list, k) {
+  const shown = list.slice(0, k);
+  const maxC = Math.max.apply(null, shown.map(x => Math.abs(x.c))) || 1;
+  $("contribs").innerHTML = shown.map((x, i) => {
+    const pct = Math.abs(x.c) / maxC * 100;
+    const color = x.c > 0 ? "var(--green)" : "var(--red)";
+    const dir = x.c > 0 ? "sprzyja A" : "sprzyja B";
+    return "<div class=\"item\" style=\"--i:" + i + "\"><span title=\"" + esc(x.feat) + "\">" +
+      (LABEL[x.feat] || x.feat) +
+      "</span><div class=\"bar\"><i style=\"width:" + pct + "%;background:" + color + "\"></i></div>" +
+      "<span style=\"color:" + color + "\">" + (x.c >= 0 ? "+" : "") + x.c.toFixed(3) + " - " + dir + "</span></div>";
+  }).join("");
+}
+
+// płynne naliczanie procentów (easeOutCubic)
+function countUp(el, target, prefix) {
+  const t0 = performance.now(), dur = 650;
+  (function frame(t) {
+    const k = Math.min((t - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = prefix + (target * e).toFixed(1) + "%";
+    if (k < 1) requestAnimationFrame(frame);
+  })(t0);
+}
+
+let allShown = false, lastList = [];
+function go() {
+  $("err").textContent = "";
+  const ra = resolveName($("in-a").value), rb = resolveName($("in-b").value);
+  if (ra.error) { $("err").textContent = "Zawodnik A: " + ra.error; return; }
+  if (rb.error) { $("err").textContent = "Zawodnik B: " + rb.error; return; }
+  if (ra.name === rb.name) { $("err").textContent = "Wybierz dwóch różnych zawodników."; return; }
+  const A = FIGHTERS[ra.name], B = FIGHTERS[rb.name];
+  showInfo("info-a", ra.name);
+  showInfo("info-b", rb.name);
+  const { pA, contribs, raw } = predict(A, B);
+  // Ostrzeżenie o wiarygodności (jak w main.py predict): model poza rozkładem treningowym.
+  const warn = [];
+  if (Math.min(A.snap.n, B.snap.n) < 3)
+    warn.push("mało walk w danych (A: " + A.snap.n + ", B: " + B.snap.n + ") - cechy bilansu i formy są wtedy szumem");
+  if (Math.abs(raw.reach_missing_diff) > 0)
+    warn.push("asymetria braku zasięgu (jedna strona nieudokumentowana) - cecha-proxy statusu o dużym wpływie");
+  if (Math.max(A.snap.days_rest, B.snap.days_rest) > 730)
+    warn.push("któryś zawodnik nie walczył w danych od ponad 2 lat - ekstrapolacja poza rozkład treningowy");
+  if (warn.length) {
+    $("warn").innerHTML = "⌁ <b>Ostrzeżenie o wiarygodności</b> - traktuj predykcję z dużą rezerwą:<ul>" +
+      warn.map(w => "<li>" + w + "</li>").join("") + "</ul>";
+    $("warn").style.display = "block";
+  } else {
+    $("warn").style.display = "none";
+  }
+  const pB = 1 - pA, conf = Math.max(pA, pB);
+  const winnerIsA = pA >= 0.5;
+  $("decision").textContent = "Decyzja modelu: WYGRYWA " + (winnerIsA ? ra.name : rb.name) +
+    "  (confidence " + (conf * 100).toFixed(1) + "%)";
+  $("ctx").textContent = "Kategoria: " + A.division + " (z ostatniej walki A) · snapshoty na " + D.meta.as_of;
+  lastList = contribs; allShown = false;
+  renderContribs(contribs, 5);
+  $("btn-all").textContent = "pokaż wszystkie 32 cechy";
+
+  // animowane otwarcie karty wyniku: reset -> reflow -> .open uruchamia kaskadę
+  const result = $("result");
+  result.classList.remove("open");
+  result.style.display = "block";
+  const pa = $("pa"), pb = $("pb");
+  pa.style.width = Math.max(pA * 100, 18) * 0 + 18 + "%";   // start od minimum
+  pb.style.width = Math.max(pB * 100, 18) * 0 + 82 + "%";
+  void result.offsetWidth;                                   // wymuszony reflow
+  result.classList.add("open");
+  pa.style.width = Math.max(pA * 100, 18) + "%";             // płynny wzrost paska
+  pb.style.width = Math.max(pB * 100, 18) + "%";
+  countUp(pa, pA * 100, "A: " + ra.name + " - ");
+  countUp(pb, pB * 100, "B: " + rb.name + " - ");
+  result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// ripple + micro-feedback na każdym przycisku
+function attachRipple(btn) {
+  btn.addEventListener("pointerdown", e => {
+    const r = btn.getBoundingClientRect();
+    const s = document.createElement("span");
+    s.className = "ripple";
+    s.style.left = (e.clientX - r.left - 7) + "px";
+    s.style.top = (e.clientY - r.top - 7) + "px";
+    btn.appendChild(s);
+    setTimeout(() => s.remove(), 600);
+  });
+}
+document.querySelectorAll("button").forEach(attachRipple);
+
+$("btn-go").addEventListener("click", go);
+$("btn-all").addEventListener("click", () => {
+  allShown = !allShown;
+  renderContribs(lastList, allShown ? FEATS.length : 5);
+  $("btn-all").textContent = allShown ? "pokaż top 5" : "pokaż wszystkie 32 cechy";
+});
+$("btn-rand").addEventListener("click", () => {
+  const i = Math.floor(Math.random() * NAMES.length);
+  let j = Math.floor(Math.random() * NAMES.length);
+  while (j === i) j = Math.floor(Math.random() * NAMES.length);
+  $("in-a").value = NAMES[i];
+  $("in-b").value = NAMES[j];
+  go();
+});
+[$("in-a"), $("in-b")].forEach(el => el.addEventListener("change", go));
+[$("in-a"), $("in-b")].forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") go(); }));
+</script>
+</body>
+</html>

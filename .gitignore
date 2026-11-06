@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Środowisko robocze (nie należy do projektu)
+plugins/
+
+# Uwaga: data/, outputs/ i web/data.js są w repo CELOWO —
+# dzięki temu wyniki (wykresy, raport, metryki) i działająca strona
+# są widoczne od razu po sklonowaniu, bez uruchamiania treningu.
+
+# R (pozostalosc srodowiska)
+.Rhistory
+.RData

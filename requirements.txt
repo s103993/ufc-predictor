@@ -1,0 +1,11 @@
+# UFC Fight Predictor — zależności (Python 3.10+)
+numpy>=1.26
+pandas>=2.0
+matplotlib>=3.8
+scikit-learn>=1.4
+torch>=2.2
+joblib>=1.3
+
+# OPCJONALNE źródło danych (pakiet pobiera dane z sieci przy pierwszym użyciu;
+# projekt domyślnie działa offline z plików w katalogu data/):
+# ufcdata @ https://github.com/nlbair/ufcdata-py/archive/refs/heads/main.zip
